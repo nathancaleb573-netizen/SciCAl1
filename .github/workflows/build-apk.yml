@@ -22,17 +22,31 @@ jobs:
           mkdir -p $D
           echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e" > $D/android-sdk-license
           echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $D/android-sdk-preview-license
-      - name: Build APK
+      - name: Build APK (try 1)
+        id: try1
+        continue-on-error: true
         shell: bash
-        run: buildozer -v android debug 2>&1 | tee build.log
+        run: buildozer -v android debug 2>&1 | tee build1.log
+      - name: Fix sdkmanager path and retry
+        id: try2
+        if: steps.try1.outcome == 'failure'
+        shell: bash
+        run: |
+          S=~/.buildozer/android/platform/android-sdk
+          echo "--- sdkmanager files found:"
+          find $S -name 'sdkmanager*' | head
+          SM=$(find $S/cmdline-tools -path '*/bin/sdkmanager' 2>/dev/null | head -1)
+          if [ -n "$SM" ]; then
+            mkdir -p $S/tools/bin
+            ln -sf "$SM" $S/tools/bin/sdkmanager
+            echo "linked $SM"
+          fi
+          buildozer -v android debug 2>&1 | tee build2.log
       - name: Show error
         if: failure()
         run: |
-          grep -v '^#' build.log > clean.log
-          echo "===== ERROR-LIKE LINES ====="
-          grep -n -i -E "error|failed|aidl|not found|exception" clean.log | grep -v -i -E "deprecat|warning|Werror|license" | head -30
-          echo "===== LAST 60 LINES ====="
-          tail -60 clean.log
+          echo "=== LAST 40 LINES ==="
+          tail -40 build2.log 2>/dev/null || tail -40 build1.log
       - uses: actions/upload-artifact@v4
         with:
           name: SciCalc-apk
